@@ -5,6 +5,7 @@ package cli
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 func (r *runner) inspect(args []string) int {
 	fs := r.flags("inspect", "[options] <archive.fmw>", "Shows what a backup holds. Without the password of an encrypted backup only its date is readable.")
 	asJSON := fs.Bool("json", false, "print fmw.json and the manifest as JSON")
+	allSites := fs.Bool("sites", false, "list every site of a network backup (default: the first 10)")
 	pos, code := r.parse(fs, args, 1, 1)
 	if code >= 0 {
 		return code
@@ -32,6 +34,9 @@ func (r *runner) inspect(args []string) int {
 		out := map[string]any{"file": pos[0], "header": json.RawMessage(a.RawHeader())}
 		if m != nil {
 			out["manifest"] = json.RawMessage(m.RawManifest())
+			if n := m.Network(); n != nil {
+				out["network"] = n // As read, or worked out from the sites for older backups.
+			}
 		}
 		return r.printJSON(out)
 	}
@@ -67,8 +72,35 @@ func (r *runner) inspect(args []string) int {
 	row("Source path", s.Abspath)
 	row("WordPress", joinNonEmpty(", ", s.WPVersion, prefixed("PHP ", s.PHPVersion)))
 	row("Database", joinNonEmpty(", ", joinNonEmpty(" ", s.DB.Engine, s.DB.Version), joinNonEmpty(" / ", s.DB.Charset, s.DB.Collate), prefixed("table prefix ", s.TablePrefix)))
-	if s.Multisite {
-		row("Multisite", fmt.Sprintf("yes, %s", plural(int64(len(s.Sites)), "site", "sites")))
+	if n := m.Network(); n != nil {
+		kind := n.Kind()
+		if kind == "" {
+			kind = "kind not known"
+		}
+		if n.Derived {
+			kind += ", worked out from the sites"
+		}
+		row("Multisite", fmt.Sprintf("yes, %s (%s)", plural(int64(len(n.Sites)), "site", "sites"), kind))
+		network := fmt.Sprintf("%s, main site %d", n.Domain+n.Path, n.MainSite)
+		if n.Networks > 1 {
+			network += fmt.Sprintf(", %d networks in the install", n.Networks)
+		}
+		row("Network", network)
+		limit := 10
+		if *allSites {
+			limit = len(n.Sites)
+		}
+		for i, site := range n.Sites {
+			label := ""
+			if i == 0 {
+				label = "Sites:"
+			}
+			if i == limit {
+				fmt.Fprintf(w, "%s\tand %d more (--sites for all)\n", label, len(n.Sites)-limit)
+				break
+			}
+			fmt.Fprintf(w, "%s\t%-4d %s\n", label, site.BlogID, clean(site.Domain+site.Path)) // Values come from the archive.
+		}
 	} else {
 		row("Multisite", "no")
 	}
@@ -242,9 +274,16 @@ Every part is checked before it is used. Paths are kept inside the folder.`)
 	noLinks := fs.Bool("no-symlinks", false, "skip symbolic links")
 	force := fs.Bool("force", false, "extract into a folder that is not empty (files from the backup replace existing ones)")
 	noSpace := fs.Bool("skip-space-check", false, "do not compare the size of the data with the free disk space first")
+	site := fs.String("site", "", "network backups: only this site (ID or address, for example 2 or example.com/shop): its tables and media,\nthe users, and the files all sites share; names and paths stay as in the network")
 	pos, code := r.parse(fs, args, 2, 2)
 	if code >= 0 {
 		return code
+	}
+	siteSet := false
+	fs.Visit(func(f *flag.Flag) { siteSet = siteSet || f.Name == "site" })
+	if siteSet && strings.TrimSpace(*site) == "" {
+		fmt.Fprintln(r.err, "fmw-tools: --site is empty; give the site's ID or address (fmw-tools inspect --sites lists them)")
+		return ExitUsage
 	}
 	o := fmw.ExtractOptions{Dest: pos[1], Symlinks: !*noLinks, Force: *force, SkipSpaceCheck: *noSpace, Paths: paths, Warn: r.warn}
 	switch *sql {
@@ -284,6 +323,12 @@ Every part is checked before it is used. Paths are kept inside the folder.`)
 		return r.fail(err)
 	}
 	defer a.Close()
+	if siteSet {
+		if o.Site, err = fmw.NewSiteFilter(m, *site); err != nil {
+			fmt.Fprintf(r.err, "fmw-tools: %s\n", clean(err.Error()))
+			return ExitUsage
+		}
+	}
 	bar := newProgress(r.err, r.progressOn(), "Extracting", fmw.ExtractTotal(m, o))
 	o.Progress = bar.add
 	started := time.Now()
@@ -316,7 +361,31 @@ Every part is checked before it is used. Paths are kept inside the folder.`)
 		} else {
 			fmt.Fprintf(r.out, "  for f in %s/*.sql.gz; do gunzip -c \"$f\"; done | mysql -u USER -p DB_NAME\n", dbDir)
 		}
-		fmt.Fprintf(r.out, "Tables use the prefix %q. The site address was %s; replace it if the domain changes (wp search-replace).\n", clean(m.Site.TablePrefix), clean(m.Site.HomeURL))
+		address := m.Site.HomeURL
+		if o.Site != nil {
+			scheme := "https://"
+			if strings.HasPrefix(strings.ToLower(address), "http://") {
+				scheme = "http://"
+			}
+			address = scheme + strings.TrimSuffix(o.Site.Site.Domain+o.Site.Site.Path, "/") // The chosen site's, not the network's.
+		}
+		fmt.Fprintf(r.out, "Tables use the prefix %q. The site address was %s; replace it if the domain changes (wp search-replace).\n", clean(m.Site.TablePrefix), clean(address))
+		if n := m.Network(); n != nil && o.Site != nil {
+			one := o.Site.Site
+			names := fmt.Sprintf("%s%d_*", clean(m.Site.TablePrefix), one.BlogID)
+			if one.BlogID == 1 {
+				names = clean(m.Site.TablePrefix) + "*, the bare prefix of site 1"
+			}
+			fmt.Fprintf(r.out, "Only site %d (%s) was extracted, with the network's users. Its tables keep their network names (%s)\n", one.BlogID, clean(one.Domain+one.Path), names)
+			fmt.Fprintf(r.out, "and its media its network folder. To make it a single site, restore the backup with the plugin: wp fmw restore <backup> --site=%d\n", one.BlogID)
+		} else if n != nil {
+			kind := n.Kind()
+			if kind == "" {
+				kind = "kind not known"
+			}
+			fmt.Fprintf(r.out, "This is a multisite network (%s, %s). If its domain or path changes, also set them in the %sblogs and %ssite tables\n", clean(n.Domain+n.Path), kind, clean(m.Site.TablePrefix), clean(m.Site.TablePrefix))
+			fmt.Fprintln(r.out, "(bare domains and paths, not URLs) and in DOMAIN_CURRENT_SITE / PATH_CURRENT_SITE in wp-config.php.")
+		}
 	}
 	return ExitOK
 }

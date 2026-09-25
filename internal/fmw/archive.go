@@ -66,12 +66,14 @@ type Site struct {
 	TablePrefix string `json:"table_prefix"`
 	Multisite   bool   `json:"multisite"`
 	Sites       []struct {
-		BlogID json.Number `json:"blog_id"`
-		Domain string      `json:"domain"`
-		Path   string      `json:"path"`
+		BlogID    json.Number     `json:"blog_id"`
+		Domain    string          `json:"domain"`
+		Path      string          `json:"path"`
+		NetworkID json.RawMessage `json:"network_id"`
 	} `json:"sites"`
-	WPVersion  string `json:"wp_version"`
-	PHPVersion string `json:"php_version"`
+	Network    json.RawMessage `json:"network"` // Networks only, read loosely by Manifest.Network: a bad value never fails the manifest.
+	WPVersion  string          `json:"wp_version"`
+	PHPVersion string          `json:"php_version"`
 	DB         struct {
 		Engine  string `json:"engine"`
 		Version string `json:"version"`
