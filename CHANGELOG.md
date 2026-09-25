@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-26
+
 ### Added
 
 - Multisite networks: `inspect` shows the network's address, kind (subdomains or subdirectories), main site and sites (the first 10, `--sites` for all; `--json` adds a `network` object), worked out from the sites for backups made before the plugin recorded `site.network`.
@@ -24,3 +26,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Passwords from a no-echo prompt (Linux, macOS, FreeBSD, Windows), `--password-file` or `FMW_PASSWORD`; keys of all parts derived in parallel.
 - Progress bar with speed and time left; exit codes 0 ok, 1 damaged or failed, 2 usage, 3 password, 4 newer format.
 - Release builds for Linux, macOS and Windows (amd64 and arm64) with SHA-256 checksums and signed build provenance; CI on all three systems.
+
+[Unreleased]: https://github.com/akhmadsakhoji/fmw-tools/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/akhmadsakhoji/fmw-tools/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/akhmadsakhoji/fmw-tools/releases/tag/v0.1.0

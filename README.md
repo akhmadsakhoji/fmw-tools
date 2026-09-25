@@ -163,7 +163,7 @@ Memory stayed around 13 MB; it does not grow with the size of the backup, becaus
 
 ## Compatibility
 
-- Reads archive format v1 as written by the plugin: TAR containers and directory mode (the same entries as plain files in a folder). The format is documented in [docs/format-v1.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/format-v1.md) of the plugin; newer format versions are refused with exit code 4 rather than misread.
+- Reads archive format v1 as written by the plugin (Founders Migration Website 1.0.0 and later, and its development versions): TAR containers and directory mode (the same entries as plain files in a folder). The format is documented in [docs/format-v1.md](https://github.com/akhmadsakhoji/founders-migration-website/blob/main/docs/format-v1.md) of the plugin; newer format versions are refused with exit code 4 rather than misread.
 - All-in-One WP Migration `.wpress` files are not supported here; restore them with the plugin (`wp fmw restore site.wpress`).
 
 ## Development
