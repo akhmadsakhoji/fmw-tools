@@ -64,10 +64,10 @@ fmw-tools <command> [options] <archive.fmw>
 
 | Command | What it does |
 |---|---|
-| `inspect` | Shows the site, versions, what was excluded and the sizes. Without the password of an encrypted backup, only its date is readable. |
+| `inspect` | Shows the site, versions, what was excluded and the sizes; for a multisite network also its address, kind, main site and sites (`--sites` for all). Without the password of an encrypted backup, only its date is readable. |
 | `verify` | Checks every part: size, SHA-256 and, when encrypted, HMAC. `--deep` also decrypts and unpacks every part and checks its content. |
 | `list` | Lists the parts. `--files` lists every file, folder and link (`--long` for details, `--path` to narrow it down). |
-| `extract` | Unpacks the files and the database into a folder. |
+| `extract` | Unpacks the files and the database into a folder, or only one site of a network (`--site`). |
 | `decrypt` | Writes an unencrypted copy of a password-protected backup. |
 | `help <command>` | All options of a command. |
 
@@ -79,6 +79,7 @@ fmw-tools list backup.fmw --files --path uploads/2025/01 # what is in that folde
 fmw-tools extract backup.fmw ./restore                   # everything
 fmw-tools extract backup.fmw ./restore --path uploads/2025/01/photo.jpg   # one file
 fmw-tools extract backup.fmw ./restore --only database --sql plain       # only the SQL, uncompressed
+fmw-tools extract network.fmw ./shop --site example.com/shop             # one site of a network backup
 fmw-tools decrypt backup-20260924-180000-a1b2c3.fmw      # -> example.com-20260924-180000-a1b2c3.fmw
 ```
 
@@ -98,7 +99,25 @@ for f in restore/database/*.sql.gz; do gunzip -c "$f"; done | mysql -u USER -p D
 wp search-replace 'https://old.example.com' 'https://new.example.com' --all-tables
 ```
 
-The folder must be empty, unless you pass `--force`; files from the backup then replace existing ones. Before writing, `extract` checks that the disk has room for the data.
+The folder must be empty, unless you pass `--force`; files from the backup then replace existing ones. Before writing, `extract` checks that the disk has room for the data (not with `--path` or `--site`, which take only part of it).
+
+### Multisite networks
+
+Backups of a whole network (subdomains or subdirectories, plain or encrypted) work with every command. `inspect` shows the network:
+
+```text
+Multisite:       yes, 16 sites (subdirectories)
+Network:         example.com/, main site 1
+Sites:           1    example.com/
+                 2    example.com/shop/
+                 3    example.com/news/
+```
+
+Backups made before the plugin recorded the network (`site.network` in the manifest) get it worked out from their sites; `inspect` says so.
+
+`extract --site=<id, address or short name>` unpacks only one site (`2`, `example.com/shop`, `shop.example.com`, or just `shop` when only one site has that folder or subdomain): its own tables (`wp_2_*`; site 1 has the bare prefix `wp_*`), the users (`wp_users`, `wp_usermeta`, shared by the network), its media (`uploads/sites/2/`, `blogs.dir/2/files/` on old networks, or `uploads/` itself for the main site) and the files all sites share (plugins, themes, languages). The network's own tables, other sites' tables and media, and the network's views and triggers stay in the backup. Names and paths stay as they are in the network; to turn the site into a single site (tables `wp_2_posts` → `wp_posts`, media to `uploads/`, users with a role on it), restore the backup with the plugin: `wp fmw restore network.fmw --site=2`.
+
+When a whole network is imported by hand at another address, set the new domain and path in the `wp_blogs` and `wp_site` tables (bare domains and paths, not URLs) and in `DOMAIN_CURRENT_SITE` / `PATH_CURRENT_SITE` in `wp-config.php`, besides `wp search-replace --network`; `extract` reminds you.
 
 ### Passwords
 

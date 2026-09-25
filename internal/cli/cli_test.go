@@ -138,3 +138,19 @@ func TestErrorsAndWarningsAreCleaned(t *testing.T) {
 		t.Fatalf("escape reached the terminal: %q", errb.String())
 	}
 }
+
+func TestSiteChoiceNeedsANetworkBackup(t *testing.T) {
+	code, out, errs := run(t, "extract", "--site=2", plain, t.TempDir())
+	if code != ExitUsage || !strings.Contains(errs, "--site is for backups of a multisite network") || out != "" {
+		t.Fatalf("code %d out %q err %q", code, out, errs)
+	}
+	for _, empty := range [][]string{{"extract", "--site=", plain, t.TempDir()}, {"extract", "--site", "", plain, t.TempDir()}} {
+		if code, _, errs := run(t, empty...); code != ExitUsage || !strings.Contains(errs, "--site is empty") {
+			t.Fatalf("empty --site: %d %q", code, errs)
+		}
+	}
+	code, out, _ = run(t, "inspect", "--sites", plain)
+	if code != ExitOK || !strings.Contains(out, "Multisite:") || strings.Contains(out, "Sites:") {
+		t.Fatalf("inspect: %d %q", code, out)
+	}
+}

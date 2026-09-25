@@ -26,14 +26,15 @@ import (
 // ExtractOptions says what Extract writes where.
 type ExtractOptions struct {
 	Dest           string
-	Files          bool     // wp-content from file parts.
-	Database       bool     // SQL files from database parts.
-	Root           bool     // WordPress root files (root-files parts).
-	PlainSQL       bool     // Decompress the SQL (default: keep .sql.gz).
-	Paths          []string // Only these wp-content paths (a file, or a folder and everything in it).
-	Symlinks       bool     // Create symbolic links (otherwise they are skipped).
-	Force          bool     // Allow a folder that is not empty; files from the archive replace existing ones.
-	SkipSpaceCheck bool     // Do not compare the data size with the free disk space first.
+	Files          bool        // wp-content from file parts.
+	Database       bool        // SQL files from database parts.
+	Root           bool        // WordPress root files (root-files parts).
+	PlainSQL       bool        // Decompress the SQL (default: keep .sql.gz).
+	Paths          []string    // Only these wp-content paths (a file, or a folder and everything in it).
+	Symlinks       bool        // Create symbolic links (otherwise they are skipped).
+	Force          bool        // Allow a folder that is not empty; files from the archive replace existing ones.
+	SkipSpaceCheck bool        // Do not compare the data size with the free disk space first.
+	Site           *SiteFilter // Only one site of a network backup (its tables and media, users, shared files).
 	Progress       func(int64)
 	Warn           func(string)
 }
@@ -53,6 +54,9 @@ type ExtractStats struct {
 func SelectParts(m *Manifest, o ExtractOptions) []Part {
 	var out []Part
 	for _, p := range m.Parts {
+		if o.Site != nil && p.Type == TypeDatabase && !o.Site.WantTable(p.Table) {
+			continue // Another site's table, the network's, or its views and triggers.
+		}
 		if (p.Type == TypeFiles && o.Files) || (p.Type == TypeDatabase && o.Database) || (p.Type == TypeRootFiles && o.Root) {
 			out = append(out, p)
 		}
@@ -136,7 +140,7 @@ func (a *Archive) Extract(password string, o ExtractOptions) (*ExtractStats, err
 		return nil, err
 	}
 	// The sizes come from the manifest, and extraction stops if a part holds more.
-	if need := ExtractNeeds(m, o); !o.SkipSpaceCheck && len(filters) == 0 {
+	if need := ExtractNeeds(m, o); !o.SkipSpaceCheck && len(filters) == 0 && o.Site == nil { // One site needs less than its parts hold.
 		if free := freeSpace(t.root); free >= 0 && (need > free || free-need < need/20) {
 			return nil, fmt.Errorf("not enough disk space in %s: the backup needs about %d MB, %d MB are free (--skip-space-check to try anyway)", o.Dest, need>>20, free>>20)
 		}
@@ -173,7 +177,7 @@ func (a *Archive) Extract(password string, o ExtractOptions) (*ExtractStats, err
 			} else {
 				only = filters
 			}
-			found, err := a.extractTar(t, p, base, only, o, st, links)
+			found, err := a.extractTar(t, p, base, only, o, st, links, p.Type == TypeFiles)
 			if err != nil {
 				return st, err
 			}
@@ -237,7 +241,7 @@ type linkList struct {
 // rootAllowed is the allowlist of WordPress root files (format v1, section 5).
 var rootAllowed = regexp.MustCompile(`^(\.htaccess|robots\.txt|ads\.txt|google[^/]*\.html|BingSiteAuth\.xml)$`)
 
-func (a *Archive) extractTar(t *tree, p Part, base string, only []string, o ExtractOptions, st *ExtractStats, links *linkList) (bool, error) {
+func (a *Archive) extractTar(t *tree, p Part, base string, only []string, o ExtractOptions, st *ExtractStats, links *linkList, content bool) (bool, error) {
 	r, err := a.OpenPlain(p, o.Progress)
 	if err != nil {
 		return false, err
@@ -258,7 +262,7 @@ func (a *Archive) extractTar(t *tree, p Part, base string, only []string, o Extr
 		if err != nil {
 			return found, err
 		}
-		if rel == "" || !wanted(rel, only) {
+		if rel == "" || !wanted(rel, only) || (content && o.Site != nil && !o.Site.WantFile(rel)) {
 			continue
 		}
 		found = true

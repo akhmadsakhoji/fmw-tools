@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Multisite networks: `inspect` shows the network's address, kind (subdomains or subdirectories), main site and sites (the first 10, `--sites` for all; `--json` adds a `network` object), worked out from the sites for backups made before the plugin recorded `site.network`.
+- `extract --site=<id, address or short name>` unpacks one site of a network backup: its own tables, the users, its media (`uploads/sites/<id>/`, `blogs.dir/<id>/files/`, or `uploads/` for the main site) and the shared files, with names and paths as in the network. Other sites, the network's tables, views and triggers stay out.
+- After extracting a network, `extract` says what to change besides the URLs when it moves (the `blogs` and `site` tables, `DOMAIN_CURRENT_SITE` / `PATH_CURRENT_SITE`), or, for one site, how the plugin turns it into a single site.
+
+## [0.1.0] - 2026-09-25
+
+### Added
+
 - `fmw-tools inspect`: site, WordPress, PHP and database versions, exclusions, contents and sizes of a backup; only the date without the password of an encrypted one. `--json` for scripts.
 - `fmw-tools verify`: size, SHA-256 and (encrypted backups) HMAC of every part, missing and unexpected entries. `--deep` also decrypts and unpacks every part and checks gzip checksums, TAR structure, entry paths, entry counts and data sizes against the manifest.
 - `fmw-tools list`: the parts, or with `--files` every file, folder and link (`--long`, `--path`, `--json` as JSON Lines).
