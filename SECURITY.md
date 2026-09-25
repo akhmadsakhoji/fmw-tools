@@ -24,7 +24,7 @@ We will keep you informed, credit you in the release notes unless you prefer oth
 
 ## Supported versions
 
-Only the latest release receives security fixes. The project is in early development (0.x).
+Only the latest release receives security fixes.
 
 ## Scope
 
